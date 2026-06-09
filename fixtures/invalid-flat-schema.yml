@@ -1,0 +1,8 @@
+fields:
+  username:
+    type: string
+    nullable: false
+    minLength: 3
+  email:
+    type: string
+    nullable: false

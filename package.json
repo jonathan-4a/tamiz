@@ -1,0 +1,56 @@
+{
+  "name": "tamiz",
+  "version": "0.1.0",
+  "description": "A rules-configured filtering gate for data pipeline records.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "test": "vitest run",
+    "check": "npm run build && npm test"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jonathan-4a/tamiz"
+  },
+  "keywords": [
+    "filter",
+    "gate",
+    "schema",
+    "validation",
+    "pipeline",
+    "rules"
+  ],
+  "homepage": "https://github.com/jonathan-4a/tamiz#readme",
+  "bugs": {
+    "url": "https://github.com/jonathan-4a/tamiz/issues"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.11.30",
+    "typescript": "^5.4.5",
+    "vitest": "^1.4.0"
+  }
+}

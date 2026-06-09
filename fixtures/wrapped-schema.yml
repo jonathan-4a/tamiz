@@ -1,0 +1,5 @@
+tamiz:
+  fields:
+    email:
+      type: string
+      nullable: false
