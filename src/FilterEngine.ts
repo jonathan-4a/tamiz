@@ -4,10 +4,11 @@ import type { AdvancedFilter } from "./advanced-filter.js";
 import type { FilterSchema, ExemptionRule } from "./schema.js";
 import type {
   EvaluateOptions,
+  EventHandler,
+  FieldRules,
   FilterResult,
-  GateWarning,
   RuleFailure,
-  WarningHandler,
+  ScalarValue,
 } from "./types.js";
 import { fail, pass } from "./types.js";
 import { evaluateString } from "./rules/string.js";
@@ -22,10 +23,8 @@ export type FilterEngineOptions = {
   schema: FilterSchema;
   /** Optional registry of advanced filter functions that run after field rules pass. */
   filterRegistry?: FilterRegistry;
-  /** Global warning handler called for every warning emitted during evaluation. */
-  onWarning?: WarningHandler;
-  /** When true, any field in the record not declared in the schema triggers a warning. */
-  warnUnknownFields?: boolean;
+  /** Global event handler called for every event emitted during evaluation. */
+  onEvent?: EventHandler;
 };
 
 const ruleFailureSchema = z.object({
@@ -43,12 +42,8 @@ const advancedFilterResultSchema = z.discriminatedUnion("ok", [
 export class FilterEngine {
   private readonly schema: FilterSchema;
   private readonly filterRegistry: FilterRegistry | undefined;
-  private readonly onWarning: WarningHandler | undefined;
-  private readonly warnUnknownFields: boolean;
+  private readonly onEvent: EventHandler | undefined;
 
-  /**
-   * @param options - Engine configuration including the schema and optional advanced filters.
-   */
   constructor(options: FilterEngineOptions) {
     if (options == null || options.schema == null) {
       throw new Error("[tamiz] FilterEngine requires a schema in the constructor.");
@@ -56,8 +51,7 @@ export class FilterEngine {
 
     this.schema = options.schema;
     this.filterRegistry = normalizeFilterRegistry(options.filterRegistry);
-    this.onWarning = options.onWarning;
-    this.warnUnknownFields = options.warnUnknownFields === true;
+    this.onEvent = options.onEvent;
   }
 
   /** Evaluate a single record against the schema. Returns pass or fail with details. */
@@ -85,38 +79,38 @@ export class FilterEngine {
     options: EvaluateOptions,
   ): FilterResult {
     assertPlainRecord(record, "record");
+
+    const onEvent = options.onEvent ?? this.onEvent;
+    const now = options.now;
+
+    assertValidNow(now);
+
     const exemption = findExemption(record, this.schema.exemptions);
     if (exemption !== null) {
-      return pass([], "exempted");
+      onEvent?.({ kind: "info", message: `Record was exempted by field '${exemption.field}'.` });
+      return pass("exempted");
     }
 
-    const fieldResult = evaluateSchemaFields(record, this.schema, this.mergeOptions(options));
+    if (onEvent) {
+      for (const field of Object.keys(record)) {
+        if (!hasOwn(this.schema.fields, field)) {
+          onEvent({ kind: "warning", message: `Field '${field}' is not declared in the schema and will not affect the gate.` });
+        }
+      }
+    }
+
+    const fieldResult = evaluateSchemaFields(record, this.schema, now);
     if (!fieldResult.ok) return fieldResult;
 
     if (this.schema.advancedFilter !== true) return fieldResult;
     if (!this.filterRegistry || this.filterRegistry.size === 0) return fieldResult;
 
-    for (const [index, filter] of this.filterRegistry.getAll().entries()) {
-      const failure = this.runAdvancedFilter(filter, index, record);
-      if (failure !== null) {
-        return fail(failure, fieldResult.warnings);
-      }
+    for (const [_index, filter] of this.filterRegistry.getAll().entries()) {
+      const failure = this.runAdvancedFilter(filter, _index, record);
+      if (failure !== null) return fail(failure);
     }
 
     return fieldResult;
-  }
-
-  private mergeOptions(options: EvaluateOptions): EvaluateOptions {
-    const merged: EvaluateOptions = {
-      warnUnknownFields: options.warnUnknownFields ?? this.warnUnknownFields,
-    };
-
-    if (options.now !== undefined) merged.now = options.now;
-
-    const onWarning = options.onWarning ?? this.onWarning;
-    if (onWarning !== undefined) merged.onWarning = onWarning;
-
-    return merged;
   }
 
   private runAdvancedFilter(
@@ -128,7 +122,7 @@ export class FilterEngine {
       return validateAdvancedFilterResult(filter(record));
     } catch (error) {
       if (error instanceof AdvancedFilterError) throw error;
-      throw new AdvancedFilterError(filterIndex, filter.name || undefined, error);
+      throw new AdvancedFilterError(filterIndex, filter.name !== "" ? filter.name : undefined, error);
     }
   }
 }
@@ -136,13 +130,9 @@ export class FilterEngine {
 function evaluateSchemaFields(
   record: Record<string, unknown>,
   schema: FilterSchema,
-  options: EvaluateOptions = {},
+  now: Date | undefined,
 ): FilterResult {
-  assertValidNow(options.now);
-  const warnings = collectBaseWarnings(record, schema, options);
-  emitWarnings(warnings, options.onWarning);
-
-  for (const [field, rules] of Object.entries(schema.fields)) {
+  for (const [field, rules] of Object.entries(schema.fields) as [string, FieldRules][]) {
     if (!hasOwn(record, field)) {
       throw new Error(`[tamiz] Record is missing required field '${field}'.`);
     }
@@ -161,45 +151,14 @@ function evaluateSchemaFields(
         failure = evaluateBoolean(field, value, rules);
         break;
       case "date":
-        failure = evaluateDate(field, value, rules, options.now);
+        failure = evaluateDate(field, value, rules, now);
         break;
     }
 
-    if (failure !== null) {
-      return fail(failure, warnings);
-    }
+    if (failure !== null) return fail(failure);
   }
 
-  return pass(warnings);
-}
-
-function collectBaseWarnings(
-  record: Record<string, unknown>,
-  schema: FilterSchema,
-  options: EvaluateOptions,
-): GateWarning[] {
-  const warnings: GateWarning[] = [];
-
-  if (options.warnUnknownFields === true) {
-    for (const [field, value] of Object.entries(record)) {
-      if (!hasOwn(schema.fields, field)) {
-        warnings.push({
-          kind: "record",
-          field,
-          rule: "unknownField",
-          value,
-          message: `Field '${field}' is not declared in the rules config; it will not affect the gate.`,
-        });
-      }
-    }
-  }
-
-  return warnings;
-}
-
-function emitWarnings(warnings: readonly GateWarning[], onWarning?: WarningHandler): void {
-  if (!onWarning) return;
-  for (const warning of warnings) onWarning(warning);
+  return pass();
 }
 
 function assertValidNow(now: Date | undefined): void {
@@ -219,10 +178,10 @@ function validateAdvancedFilterResult(result: unknown): RuleFailure | null {
     const firstIssue = parseResult.error.issues[0];
     const path = firstIssue.path.join(".");
 
-    if (path === "ok" || path === "") {
+    if (path === "ok") {
       throw new Error("[tamiz] Advanced filter result.ok must be true or false.");
     }
-    if (path === "error" || path === "") {
+    if (path === "error") {
       throw new Error("[tamiz] Advanced filter result.error must be a RuleFailure object.");
     }
     if (path === "error.field") {
@@ -234,6 +193,7 @@ function validateAdvancedFilterResult(result: unknown): RuleFailure | null {
     if (path === "error.message") {
       throw new Error("[tamiz] Advanced filter RuleFailure.message must be a non-empty string.");
     }
+
     throw new Error(`[tamiz] Advanced filter returned invalid result: ${firstIssue.message}`);
   }
 
@@ -261,8 +221,7 @@ function findExemption(
 ): ExemptionRule | null {
   for (const exemption of exemptions) {
     if (!hasOwn(record, exemption.field)) continue;
-    const value = record[exemption.field];
-    if (exemption.values.some((allowed) => Object.is(allowed, value))) {
+    if (exemption.values.some((allowed: ScalarValue) => Object.is(allowed, record[exemption.field]))) {
       return exemption;
     }
   }

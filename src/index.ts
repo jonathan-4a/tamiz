@@ -8,19 +8,20 @@ export type { FilterEngineOptions } from "./FilterEngine.js";
 
 export { AdvancedFilterError, FilterRegistry } from "./advanced-filter.js";
 export type { AdvancedFilter, AdvancedFilterResult } from "./advanced-filter.js";
+
 export type {
   EvaluateOptions,
-  WarningHandler,
-  FilterSchema,
+  EventHandler,
+  EngineEvent,
   FieldRules,
   FieldType,
   StringRules,
   NumberRules,
   BooleanRules,
   DateRules,
-  ExemptionRule,
   ScalarValue,
   FilterResult,
-  GateWarning,
   RuleFailure,
 } from "./types.js";
+
+export type { FilterSchema, ExemptionRule } from "./schema.js";

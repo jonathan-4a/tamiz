@@ -1,5 +1,6 @@
 import { describe, test, expect, vi } from "vitest";
-import { makeEngine, expectPass, expectFail, expectExempted, expectMissingField, NOW } from "./helpers.js";
+import { FilterEngine, loadSchemaFromObject } from "../src/index.js";
+import { makeEngine, expectPass, expectFail, expectExempted, expectMissingField, NOW, loadSchema } from "./helpers.js";
 
 const OPT = { now: NOW };
 
@@ -19,16 +20,16 @@ describe("Exemptions", () => {
       expect(eng.evaluate({ role: "admin" }, OPT).ok).toBe(true);
     });
 
-    test("exemption bypasses field-rule warnings", () => {
-      const onWarning = vi.fn();
+    test("exemption bypasses field-rule warnings and emits info event", () => {
+      const events: unknown[] = [];
       const result = eng.evaluate(
         { role: "admin", extra: true },
-        { ...OPT, warnUnknownFields: true, onWarning },
+        { ...OPT, onEvent: (e) => events.push(e) },
       );
 
       expectExempted(result);
-      expect(result.warnings).toEqual([]);
-      expect(onWarning).not.toHaveBeenCalled();
+      // only an info event for exemption, no warning events
+      expect((events as any[]).every((e: any) => e.kind === "info")).toBe(true);
     });
 
     test("non-matching value is not exempted and missing field throws", () => {
@@ -72,7 +73,6 @@ describe("Exemptions", () => {
         { exemptions: [{ field: "isSpecial", values: [true] }] },
       );
       expectExempted(eng.evaluate({ isSpecial: true }, OPT));
-      // false doesn't match
       expectMissingField(() => eng.evaluate({ isSpecial: false }, OPT), "name");
     });
   });

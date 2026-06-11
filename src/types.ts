@@ -43,19 +43,6 @@ export type DateRules = BaseFieldRules<"date"> & {
 /** Union of all field rule types. */
 export type FieldRules = StringRules | NumberRules | BooleanRules | DateRules;
 
-/** A rule that bypasses all field checks when the record's field matches one of the exempted values. */
-export type ExemptionRule = {
-  field: string;
-  values: ScalarValue[];
-};
-
-/** Full parsed schema passed to {@link FilterEngine}. */
-export type FilterSchema = {
-  advancedFilter: boolean;
-  readonly fields: Readonly<Record<string, FieldRules>>;
-  readonly exemptions: readonly ExemptionRule[];
-};
-
 /** Details about why a record failed evaluation. */
 export type RuleFailure = {
   field: string;
@@ -63,46 +50,29 @@ export type RuleFailure = {
   message: string;
 };
 
-/** A non-fatal warning emitted during evaluation (e.g. unknown fields). */
-export type GateWarning = {
-  kind: "record";
-  field?: string;
-  rule: string;
-  message: string;
-  value?: unknown;
-};
-
 /** The result of evaluating a record: either passed (with reason) or failed (with error details). */
 export type FilterResult =
-  | {
-      ok: true;
-      reason: "passed" | "exempted";
-      warnings: GateWarning[];
-    }
-  | {
-      ok: false;
-      error: RuleFailure;
-      warnings: GateWarning[];
-    };
+  | { ok: true;  reason: "passed" | "exempted" }
+  | { ok: false; error: RuleFailure };
 
-export function pass(warnings: GateWarning[] = [], reason: "passed" | "exempted" = "passed"): FilterResult {
-  return { ok: true, reason, warnings };
+export function pass(reason: "passed" | "exempted" = "passed"): FilterResult {
+  return { ok: true, reason };
 }
 
-export function fail(failure: RuleFailure, warnings: GateWarning[] = []): FilterResult {
-  return {
-    ok: false,
-    error: failure,
-    warnings,
-  };
+export function fail(failure: RuleFailure): FilterResult {
+  return { ok: false, error: failure };
 }
 
-/** Callback invoked for each non-fatal warning during evaluation. */
-export type WarningHandler = (warning: GateWarning) => void;
+/** An event emitted by the engine during evaluation. */
+export type EngineEvent =
+  | { kind: "warning"; message: string }
+  | { kind: "info";    message: string };
+
+/** Callback invoked for each event emitted during evaluation. */
+export type EventHandler = (event: EngineEvent) => void;
 
 /** Per-call options for {@link FilterEngine.evaluate} and {@link FilterEngine.evaluateBatch}. */
 export type EvaluateOptions = {
   now?: Date;
-  onWarning?: WarningHandler;
-  warnUnknownFields?: boolean;
+  onEvent?: EventHandler;
 };
