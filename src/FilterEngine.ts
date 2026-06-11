@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { AdvancedFilterError, FilterRegistry } from "./advanced-filter.js";
-import type { AdvancedFilter } from "./advanced-filter.js";
+import { AdvancedFilterError, FilterRegistry } from "./AdvancedFilter.js";
+import type { AdvancedFilter } from "./AdvancedFilter.js";
 import type { FilterSchema, ExemptionRule } from "./schema.js";
 import type {
   EvaluateOptions,
@@ -38,6 +38,14 @@ const advancedFilterResultSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(false), error: ruleFailureSchema }),
 ]);
 
+function resolveConcurrency(value: number | undefined): number {
+  if (value === undefined) return 1;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`[tamiz] concurrency must be a positive integer; received ${value}.`);
+  }
+  return value;
+}
+
 /** The main entry point. Create an engine with a schema, then evaluate records against it. */
 export class FilterEngine {
   private readonly schema: FilterSchema;
@@ -55,29 +63,46 @@ export class FilterEngine {
   }
 
   /** Evaluate a single record against the schema. Returns pass or fail with details. */
-  evaluate(
+  async evaluate(
     record: Record<string, unknown>,
     options: EvaluateOptions = {},
-  ): FilterResult {
+  ): Promise<FilterResult> {
     return this.evaluateRecord(record, options);
   }
 
-  /** Evaluate multiple records in batch. Results are returned in the same order. */
-  evaluateBatch(
+  /** Evaluate multiple records in batch. Results are returned in the same order as the input.
+   *
+   * Concurrency is controlled by `options.concurrency` (default: 1 — fully sequential).
+   * Raise it only when your advanced filters can safely handle parallel access to their
+   * underlying resources (e.g. a DB pool sized to match, a thread-safe model server, etc.).
+   */
+  async evaluateBatch(
     records: Record<string, unknown>[],
     options: EvaluateOptions = {},
-  ): FilterResult[] {
+  ): Promise<FilterResult[]> {
     if (!Array.isArray(records)) {
       throw new Error(`[tamiz] records must be an array; received ${actualType(records)}.`);
     }
 
-    return records.map((record) => this.evaluateRecord(record, options));
+    const concurrency = resolveConcurrency(options.concurrency);
+    const results: FilterResult[] = new Array(records.length);
+    let next = 0;
+
+    const worker = async (): Promise<void> => {
+      while (next < records.length) {
+        const index = next++;
+        results[index] = await this.evaluateRecord(records[index], options);
+      }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, worker));
+    return results;
   }
 
-  private evaluateRecord(
+  private async evaluateRecord(
     record: Record<string, unknown>,
     options: EvaluateOptions,
-  ): FilterResult {
+  ): Promise<FilterResult> {
     assertPlainRecord(record, "record");
 
     const onEvent = options.onEvent ?? this.onEvent;
@@ -105,25 +130,37 @@ export class FilterEngine {
     if (this.schema.advancedFilter !== true) return fieldResult;
     if (!this.filterRegistry || this.filterRegistry.size === 0) return fieldResult;
 
-    for (const [_index, filter] of this.filterRegistry.getAll().entries()) {
-      const failure = this.runAdvancedFilter(filter, _index, record);
-      if (failure !== null) return fail(failure);
-    }
+    const failure = await this.runAdvancedFilters(
+      this.filterRegistry.getAll(),
+      record,
+      onEvent,
+    );
+    if (failure !== null) return fail(failure);
 
     return fieldResult;
   }
 
-  private runAdvancedFilter(
-    filter: AdvancedFilter,
-    filterIndex: number,
+  /** Run advanced filters sequentially, short-circuiting on the first failure. */
+  private async runAdvancedFilters(
+    filters: readonly AdvancedFilter[],
     record: Record<string, unknown>,
-  ): RuleFailure | null {
-    try {
-      return validateAdvancedFilterResult(filter(record));
-    } catch (error) {
-      if (error instanceof AdvancedFilterError) throw error;
-      throw new AdvancedFilterError(filterIndex, filter.name !== "" ? filter.name : undefined, error);
+    onEvent: EventHandler | undefined,
+  ): Promise<RuleFailure | null> {
+    for (let index = 0; index < filters.length; index++) {
+      const filter = filters[index];
+      try {
+        onEvent?.({ kind: "info", message: `Running advanced filter #${index}${filter.name ? ` (${filter.name})` : ""}.` });
+        const result = validateAdvancedFilterResult(await filter(record, onEvent));
+        if (result !== null) {
+          onEvent?.({ kind: "info", message: `Advanced filter #${index}${filter.name ? ` (${filter.name})` : ""} rejected the record.` });
+          return result;
+        }
+      } catch (error) {
+        if (error instanceof AdvancedFilterError) throw error;
+        throw new AdvancedFilterError(index, filter.name !== "" ? filter.name : undefined, error);
+      }
     }
+    return null;
   }
 }
 

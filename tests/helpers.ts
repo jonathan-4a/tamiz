@@ -1,5 +1,6 @@
 import { expect } from "vitest";
 import { FilterEngine, FilterRegistry, loadSchemaFromObject } from "../src/index.js";
+import type { FilterResult } from "../src/index.js";
 
 export { FilterEngine, FilterRegistry, loadSchemaFromObject };
 
@@ -21,27 +22,30 @@ export function loadSchema(tamiz: Record<string, unknown>) {
   return loadSchemaFromObject({ tamiz } as Parameters<typeof loadSchemaFromObject>[0]);
 }
 
-export function expectPass(result: { ok: boolean }) {
-  expect(result.ok).toBe(true);
+export async function expectPass(result: FilterResult | Promise<FilterResult>) {
+  const actual = await result;
+  expect(actual.ok).toBe(true);
 }
 
-export function expectFail(
-  result: { ok: boolean; error?: { field?: string; rule?: string } },
+export async function expectFail(
+  result: FilterResult | Promise<FilterResult>,
   field: string,
   rule: string,
 ) {
-  expect(result.ok).toBe(false);
-  if (!result.ok) {
-    expect(result.error?.field).toBe(field);
-    expect(result.error?.rule).toBe(rule);
+  const actual = await result;
+  expect(actual.ok).toBe(false);
+  if (!actual.ok) {
+    expect(actual.error.field).toBe(field);
+    expect(actual.error.rule).toBe(rule);
   }
 }
 
-export function expectMissingField(action: () => unknown, field: string) {
-  expect(action).toThrow(new RegExp(`missing required field '${field}'`));
+export async function expectMissingField(action: () => unknown, field: string) {
+  await expect(Promise.resolve().then(action)).rejects.toThrow(new RegExp(`missing required field '${field}'`));
 }
 
-export function expectExempted(result: { ok: boolean; reason?: string }) {
-  expect(result.ok).toBe(true);
-  if (result.ok) expect((result as any).reason).toBe("exempted");
+export async function expectExempted(result: FilterResult | Promise<FilterResult>) {
+  const actual = await result;
+  expect(actual.ok).toBe(true);
+  if (actual.ok) expect(actual.reason).toBe("exempted");
 }

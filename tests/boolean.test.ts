@@ -16,17 +16,17 @@ describe("Boolean fields", () => {
   describe("nullable omitted", () => {
     const eng = makeEngine({ flag: { type: "boolean" } });
 
-    test("allows empty values", () => {
-      expectPass(eng.evaluate({ flag: null }));
-      expectPass(eng.evaluate({ flag: undefined }));
+    test("allows empty values", async () => {
+      await expectPass(eng.evaluate({ flag: null }));
+      await expectPass(eng.evaluate({ flag: undefined }));
     });
   });
 
   describe("type mismatch throws", () => {
     const eng = makeEngine({ b: { type: "boolean", nullable: false } });
 
-    test("number 1 throws", () => { expect(() => eng.evaluate({ b: 1 })).toThrow(/type mismatch/); });
-    test("string 'true' throws", () => { expect(() => eng.evaluate({ b: "true" })).toThrow(/type mismatch/); });
+    test("number 1 throws", async () => { await expect(eng.evaluate({ b: 1 })).rejects.toThrow(/type mismatch/); });
+    test("string 'true' throws", async () => { await expect(eng.evaluate({ b: "true" })).rejects.toThrow(/type mismatch/); });
   });
 
   describe("mustBe: true", () => {

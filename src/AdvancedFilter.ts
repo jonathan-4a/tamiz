@@ -1,12 +1,12 @@
-import type { RuleFailure } from "./types.js";
+import type { RuleFailure, EventHandler } from "./types.js";
 
 /** Result returned by an {@link AdvancedFilter} function. */
 export type AdvancedFilterResult =
   | { ok: true }
   | { ok: false; error: RuleFailure };
 
-/** A custom filter function for logic beyond per-field rules. Runs after all field rules pass. */
-export type AdvancedFilter = (record: Record<string, unknown>) => AdvancedFilterResult;
+/** A custom filter function for logic beyond per-field rules. Runs after all field rules pass. May be sync or async. */
+export type AdvancedFilter = (record: Record<string, unknown>, onEvent: EventHandler | undefined) => AdvancedFilterResult | Promise<AdvancedFilterResult>;
 
 /** Thrown when an advanced filter throws an unexpected error during evaluation. */
 export class AdvancedFilterError extends Error {

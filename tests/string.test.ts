@@ -15,18 +15,18 @@ describe("String fields", () => {
   describe("nullable omitted", () => {
     const eng = makeEngine({ name: { type: "string" } });
 
-    test("allows empty values", () => {
-      expectPass(eng.evaluate({ name: null }));
-      expectPass(eng.evaluate({ name: undefined }));
-      expectPass(eng.evaluate({ name: "" }));
+    test("allows empty values", async () => {
+      await expectPass(eng.evaluate({ name: null }));
+      await expectPass(eng.evaluate({ name: undefined }));
+      await expectPass(eng.evaluate({ name: "" }));
     });
   });
 
   describe("type mismatch throws", () => {
     const eng = makeEngine({ s: { type: "string", nullable: false } });
 
-    test("number throws", () => { expect(() => eng.evaluate({ s: 42 })).toThrow(/type mismatch/); });
-    test("boolean throws", () => { expect(() => eng.evaluate({ s: true })).toThrow(/type mismatch/); });
+    test("number throws", async () => { await expect(eng.evaluate({ s: 42 })).rejects.toThrow(/type mismatch/); });
+    test("boolean throws", async () => { await expect(eng.evaluate({ s: true })).rejects.toThrow(/type mismatch/); });
   });
 
   describe("minLength", () => {
@@ -43,9 +43,9 @@ describe("String fields", () => {
     test("passes at boundary", () => expectPass(eng.evaluate({ bio: "hello" })));
     test("passes below boundary", () => expectPass(eng.evaluate({ bio: "hi" })));
     test("fails one above boundary", () => expectFail(eng.evaluate({ bio: "toolong" }), "bio", "maxLength"));
-    test("maxLength:0 rejects any non-empty string", () => {
+    test("maxLength:0 rejects any non-empty string", async () => {
       const e = makeEngine({ x: { type: "string", maxLength: 0 } });
-      expectFail(e.evaluate({ x: "a" }), "x", "maxLength");
+      await expectFail(e.evaluate({ x: "a" }), "x", "maxLength");
     });
   });
 
@@ -105,8 +105,8 @@ describe("String fields", () => {
   describe("first failing field reported", () => {
     const eng = makeEngine({ a: { type: "string", nullable: false }, b: { type: "string", nullable: false } });
 
-    test("throws for field 'a' when both absent", () => {
-      expectMissingField(() => eng.evaluate({}), "a");
+    test("throws for field 'a' when both absent", async () => {
+      await expectMissingField(() => eng.evaluate({}), "a");
     });
   });
 });

@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
-import path from "path";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { FilterEngine, loadSchemaFromObject, loadSchemaFromFile } from "../src/index.js";
 import { expectMissingField } from "./helpers.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function loadSchema(tamiz: Record<string, unknown>) {
   return loadSchemaFromObject({ tamiz } as Parameters<typeof loadSchemaFromObject>[0]);
@@ -13,11 +16,12 @@ describe("Schema loading", () => {
       expect(() => loadSchemaFromObject({ fields: {} })).toThrow("tamiz");
     });
 
-    it("loads valid schema and engine evaluates correctly", () => {
+    it("loads valid schema and engine evaluates correctly", async () => {
       const schema = loadSchema({ fields: { name: { type: "string", nullable: false } } });
       const eng = new FilterEngine({ schema });
-      expect(eng.evaluate({ name: "Alice" }).ok).toBe(true);
-      expectMissingField(() => eng.evaluate({}), "name");
+      const result = await eng.evaluate({ name: "Alice" });
+      expect(result.ok).toBe(true);
+      await expectMissingField(() => eng.evaluate({}), "name");
     });
 
     it("accepts empty fields object", () => {
@@ -39,13 +43,15 @@ describe("Schema loading", () => {
       ).toThrow("tamiz");
     });
 
-    it("loads tamiz-wrapped YAML and engine evaluates correctly", () => {
+    it("loads tamiz-wrapped YAML and engine evaluates correctly", async () => {
       const schema = loadSchemaFromFile(
         path.resolve(__dirname, "../fixtures/wrapped-schema.yml"),
       );
       const eng = new FilterEngine({ schema });
-      expect(eng.evaluate({ email: "user@example.com" }).ok).toBe(true);
-      expect(eng.evaluate({ email: "" }).ok).toBe(false);
+      const pass = await eng.evaluate({ email: "user@example.com" });
+      const fail = await eng.evaluate({ email: "" });
+      expect(pass.ok).toBe(true);
+      expect(fail.ok).toBe(false);
     });
   });
 

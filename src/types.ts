@@ -75,4 +75,10 @@ export type EventHandler = (event: EngineEvent) => void;
 export type EvaluateOptions = {
   now?: Date;
   onEvent?: EventHandler;
+  /**
+   * Maximum number of records evaluated concurrently in {@link FilterEngine.evaluateBatch}.
+   * Defaults to 1 (sequential). Increase carefully when advanced filters access shared
+   * resources such as databases, ML models, or rate-limited APIs.
+   */
+  concurrency?: number;
 };

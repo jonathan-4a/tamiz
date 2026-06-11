@@ -79,26 +79,28 @@ describe("FilterRegistry", () => {
 });
 
 describe("Advanced filters — basic behaviour", () => {
-  test("filter returning ok:true passes the record", () => {
+  test("filter returning ok:true passes the record", async () => {
     const eng = makeAdvancedEngine(() => false);
-    expect(eng.evaluate({ x: "ok" }, OPT).ok).toBe(true);
+    const r = await eng.evaluate({ x: "ok" }, OPT);
+    expect(r.ok).toBe(true);
   });
 
-  test("filter returning ok:false fails the record", () => {
+  test("filter returning ok:false fails the record", async () => {
     const eng = makeAdvancedEngine(() => true);
-    const r = eng.evaluate({ x: "ok" }, OPT) as any;
+    const r = await eng.evaluate({ x: "ok" }, OPT);
     expect(r.ok).toBe(false);
-    expect(r.error.rule).toBe("customFail");
+    if (!r.ok) expect(r.error.rule).toBe("customFail");
   });
 
-  test("advanced filters do NOT run when advancedFilter flag is false", () => {
+  test("advanced filters do NOT run when advancedFilter flag is false", async () => {
     let ran = false;
     const eng = makeAdvancedEngine(() => { ran = true; return true; }, { advancedFilter: false });
-    expect(eng.evaluate({ x: "ok" }, OPT).ok).toBe(true);
+    const r = await eng.evaluate({ x: "ok" }, OPT);
+    expect(r.ok).toBe(true);
     expect(ran).toBe(false);
   });
 
-  test("advanced filter only runs after built-in rules pass", () => {
+  test("advanced filter only runs after built-in rules pass", async () => {
     let ran = false;
     const registry = new FilterRegistry();
     registry.register(() => { ran = true; return { ok: true }; });
@@ -107,41 +109,42 @@ describe("Advanced filters — basic behaviour", () => {
     } as any);
     const eng = new FilterEngine({ schema, filterRegistry: registry });
 
-    // missing 'x' should throw before advanced filter runs
-    expectMissingField(() => eng.evaluate({}, OPT), "x");
+    await expectMissingField(() => eng.evaluate({}, OPT), "x");
     expect(ran).toBe(false);
   });
 });
 
 describe("Advanced filters — multiple filters", () => {
-  test("first failing filter stops evaluation (short-circuit)", () => {
-    const order: number[] = [];
+  test("returns the first failing filter in registration order", async () => {
     const registry = new FilterRegistry();
-    registry.register(() => {
-      order.push(1);
-      return { ok: false, error: { field: "x", rule: "first", message: "fail" } };
-    });
-    registry.register(() => { order.push(2); return { ok: true }; });
+    registry.register(() => ({
+      ok: false,
+      error: { field: "x", rule: "first", message: "fail" },
+    }));
+    registry.register(() => ({
+      ok: false,
+      error: { field: "x", rule: "second", message: "fail" },
+    }));
 
     const schema = loadSchemaFromObject({
       tamiz: { fields: { x: { type: "string" } }, advancedFilter: true },
     } as any);
     const eng = new FilterEngine({ schema, filterRegistry: registry });
-    const r = eng.evaluate({ x: "val" }, OPT) as any;
+    const r = await eng.evaluate({ x: "val" }, OPT);
 
     expect(r.ok).toBe(false);
-    expect(r.error.rule).toBe("first");
-    expect(order).toEqual([1]);
+    if (!r.ok) expect(r.error.rule).toBe("first");
   });
 
-  test("all filters passing still results in ok:true", () => {
+  test("all filters passing still results in ok:true", async () => {
     const registry = new FilterRegistry();
     registry.register(() => ({ ok: true }));
     registry.register(() => ({ ok: true }));
     const schema = loadSchemaFromObject({
       tamiz: { fields: { x: { type: "string" } }, advancedFilter: true },
     } as any);
-    expect(new FilterEngine({ schema, filterRegistry: registry }).evaluate({ x: "ok" }, OPT).ok).toBe(true);
+    const r = await new FilterEngine({ schema, filterRegistry: registry }).evaluate({ x: "ok" }, OPT);
+    expect(r.ok).toBe(true);
   });
 });
 
@@ -157,9 +160,9 @@ describe("Advanced filters — exceptions", () => {
     });
   }
 
-  test("callback exception throws AdvancedFilterError with filter metadata", () => {
+  test("callback exception throws AdvancedFilterError with filter metadata", async () => {
     try {
-      makeCrashingEngine().evaluate({ x: "val" }, OPT);
+      await makeCrashingEngine().evaluate({ x: "val" }, OPT);
       throw new Error("expected evaluate to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(AdvancedFilterError);
@@ -181,29 +184,29 @@ describe("Advanced filters — invalid return values", () => {
     return new FilterEngine({ schema, filterRegistry: registry });
   }
 
-  test("returning null throws AdvancedFilterError", () => {
-    expect(() => makeReturningEngine(null).evaluate({ x: "val" }, OPT)).toThrow(AdvancedFilterError);
+  test("returning null throws AdvancedFilterError", async () => {
+    await expect(makeReturningEngine(null).evaluate({ x: "val" }, OPT)).rejects.toThrow(AdvancedFilterError);
   });
 
-  test("returning non-object throws AdvancedFilterError", () => {
-    expect(() => makeReturningEngine("oops").evaluate({ x: "val" }, OPT)).toThrow(AdvancedFilterError);
+  test("returning non-object throws AdvancedFilterError", async () => {
+    await expect(makeReturningEngine("oops").evaluate({ x: "val" }, OPT)).rejects.toThrow(AdvancedFilterError);
   });
 
-  test("returning ok:false with empty error field throws AdvancedFilterError", () => {
-    expect(() =>
-      makeReturningEngine({ ok: false, error: { field: "", rule: "r", message: "m" } }).evaluate({ x: "val" }, OPT)
-    ).toThrow(AdvancedFilterError);
+  test("returning ok:false with empty error field throws AdvancedFilterError", async () => {
+    await expect(
+      makeReturningEngine({ ok: false, error: { field: "", rule: "r", message: "m" } }).evaluate({ x: "val" }, OPT),
+    ).rejects.toThrow(AdvancedFilterError);
   });
 
-  test("returning ok:false with missing error rule throws AdvancedFilterError", () => {
-    expect(() =>
-      makeReturningEngine({ ok: false, error: { field: "x", message: "m" } }).evaluate({ x: "val" }, OPT)
-    ).toThrow(AdvancedFilterError);
+  test("returning ok:false with missing error rule throws AdvancedFilterError", async () => {
+    await expect(
+      makeReturningEngine({ ok: false, error: { field: "x", message: "m" } }).evaluate({ x: "val" }, OPT),
+    ).rejects.toThrow(AdvancedFilterError);
   });
 });
 
 describe("Advanced filters — cross-field validation", () => {
-  test("filter can enforce cross-field constraint", () => {
+  test("filter can enforce cross-field constraint", async () => {
     const registry = new FilterRegistry();
     registry.register((record: any) => {
       if (record.endDate <= record.startDate) {
@@ -229,9 +232,11 @@ describe("Advanced filters — cross-field validation", () => {
     const valid = new Date("2024-01-10");
     const invalid = new Date("2023-12-01");
 
-    expect(eng.evaluate({ startDate: start, endDate: valid }, OPT).ok).toBe(true);
-    const r = eng.evaluate({ startDate: start, endDate: invalid }, OPT) as any;
-    expect(r.ok).toBe(false);
-    expect(r.error.rule).toBe("endBeforeStart");
+    const pass = await eng.evaluate({ startDate: start, endDate: valid }, OPT);
+    expect(pass.ok).toBe(true);
+
+    const fail = await eng.evaluate({ startDate: start, endDate: invalid }, OPT);
+    expect(fail.ok).toBe(false);
+    if (!fail.ok) expect(fail.error.rule).toBe("endBeforeStart");
   });
 });

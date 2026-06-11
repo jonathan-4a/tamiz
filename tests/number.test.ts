@@ -15,19 +15,19 @@ describe("Number fields", () => {
   describe("nullable omitted", () => {
     const eng = makeEngine({ n: { type: "number" } });
 
-    test("allows empty values", () => {
-      expectPass(eng.evaluate({ n: null }));
-      expectPass(eng.evaluate({ n: undefined }));
+    test("allows empty values", async () => {
+      await expectPass(eng.evaluate({ n: null }));
+      await expectPass(eng.evaluate({ n: undefined }));
     });
   });
 
   describe("type mismatch throws", () => {
     const eng = makeEngine({ n: { type: "number", nullable: false } });
 
-    test("string throws", () => { expect(() => eng.evaluate({ n: "1" })).toThrow(/type mismatch/); });
-    test("Infinity throws", () => { expect(() => eng.evaluate({ n: Infinity })).toThrow(/type mismatch/); });
-    test("-Infinity throws", () => { expect(() => eng.evaluate({ n: -Infinity })).toThrow(/type mismatch/); });
-    test("NaN throws", () => { expect(() => eng.evaluate({ n: NaN })).toThrow(/type mismatch/); });
+    test("string throws", async () => { await expect(eng.evaluate({ n: "1" })).rejects.toThrow(/type mismatch/); });
+    test("Infinity throws", async () => { await expect(eng.evaluate({ n: Infinity })).rejects.toThrow(/type mismatch/); });
+    test("-Infinity throws", async () => { await expect(eng.evaluate({ n: -Infinity })).rejects.toThrow(/type mismatch/); });
+    test("NaN throws", async () => { await expect(eng.evaluate({ n: NaN })).rejects.toThrow(/type mismatch/); });
   });
 
   describe("min", () => {
@@ -67,17 +67,17 @@ describe("Number fields", () => {
   describe("allowedValues", () => {
     const eng = makeEngine({ n: { type: "number", allowedValues: [1, 2, 3] } });
 
-    test("passes each listed value", () => {
-      expectPass(eng.evaluate({ n: 1 }));
-      expectPass(eng.evaluate({ n: 2 }));
-      expectPass(eng.evaluate({ n: 3 }));
+    test("passes each listed value", async () => {
+      await expectPass(eng.evaluate({ n: 1 }));
+      await expectPass(eng.evaluate({ n: 2 }));
+      await expectPass(eng.evaluate({ n: 3 }));
     });
     test("fails unlisted value", () => expectFail(eng.evaluate({ n: 4 }), "n", "allowedValues"));
     test("fails zero when not listed", () => expectFail(eng.evaluate({ n: 0 }), "n", "allowedValues"));
-    test("negative numbers work in list", () => {
+    test("negative numbers work in list", async () => {
       const e = makeEngine({ n: { type: "number", allowedValues: [-1, 0] } });
-      expectPass(e.evaluate({ n: -1 }));
-      expectFail(e.evaluate({ n: 1 }), "n", "allowedValues");
+      await expectPass(e.evaluate({ n: -1 }));
+      await expectFail(e.evaluate({ n: 1 }), "n", "allowedValues");
     });
   });
 
@@ -85,9 +85,9 @@ describe("Number fields", () => {
     const eng = makeEngine({ n: { type: "number", blockedValues: [0, -1] } });
 
     test("passes non-blocked value", () => expectPass(eng.evaluate({ n: 5 })));
-    test("fails each blocked value", () => {
-      expectFail(eng.evaluate({ n: 0 }), "n", "blockedValues");
-      expectFail(eng.evaluate({ n: -1 }), "n", "blockedValues");
+    test("fails each blocked value", async () => {
+      await expectFail(eng.evaluate({ n: 0 }), "n", "blockedValues");
+      await expectFail(eng.evaluate({ n: -1 }), "n", "blockedValues");
     });
   });
 
